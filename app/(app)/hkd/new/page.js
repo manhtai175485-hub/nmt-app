@@ -1,112 +1,231 @@
-import { notFound } from "next/navigation";
+"use client";
+
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { createClient } from "@/lib/supabaseServer";
-import { STATUS, fmtDate } from "@/lib/constants";
-import StatusActions from "@/components/StatusActions";
-import FileUploadField from "@/components/FileUploadField";
-import ReassignEmployee from "@/components/ReassignEmployee";
+import { createClient } from "@/lib/supabaseClient";
 
-export default async function DossierDetailPage({ params }) {
-  const supabase = createClient();
+function suggestCode() {
+  const now = new Date();
+  const yy = String(now.getFullYear()).slice(2);
+  const mm = String(now.getMonth() + 1).padStart(2, "0");
+  const dd = String(now.getDate()).padStart(2, "0");
+  const rand = String(Math.floor(Math.random() * 900) + 100);
+  return `HKD-${yy}${mm}${dd}${rand}`;
+}
 
-  const { data: { user } } = await supabase.auth.getUser();
-  const { data: me } = await supabase.from("employees").select("id, role").eq("auth_user_id", user.id).single();
+const inputStyle = {
+  border: "1px solid #ddd",
+  borderRadius: 8,
+  padding: "8px 10px",
+  fontSize: 14,
+  outline: "none",
+};
 
-  const { data: dossier } = await supabase
-    .from("dossiers")
-    .select("*, employees:assigned_employee_id(name), wards:ward_id(name)")
-    .eq("id", params.id)
-    .single();
-
-  if (!dossier) notFound();
-
-  let activeEmployees = [];
-  if (me.role === "Quản lý") {
-    const { data } = await supabase
-      .from("employees")
-      .select("id, name")
-      .eq("status", "Đang hoạt động")
-      .order("name");
-    activeEmployees = data || [];
-  }
-
-  const { data: history } = await supabase
-    .from("dossier_history")
-    .select("status, at, employees:changed_by(name)")
-    .eq("dossier_id", dossier.id)
-    .order("at", { ascending: false });
-
-  const st = STATUS[dossier.status] || { label: dossier.status, color: "#333", bg: "#eee" };
-
+function Field({ label, children }) {
   return (
-    <div style={{ maxWidth: 640 }}>
-      <Link href="/hkd" style={{ fontSize: 13, color: "#6B7269", textDecoration: "none" }}>← Quay lại danh sách</Link>
-
-      <div style={{ display: "flex", alignItems: "center", gap: 10, margin: "12px 0 4px" }}>
-        <h1 style={{ fontSize: 20, fontWeight: 700, margin: 0 }}>{dossier.code}</h1>
-        <span style={{ padding: "3px 10px", borderRadius: 999, fontSize: 12, fontWeight: 600, color: st.color, background: st.bg }}>{st.label}</span>
-      </div>
-      <div style={{ fontSize: 14, color: "#1F2421", marginBottom: 20 }}>{dossier.name}</div>
-
-      <div style={{ background: "#fff", border: "1px solid #E2E5DF", borderRadius: 12, padding: 20, marginBottom: 16 }}>
-        <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 12 }}>Thông tin hồ sơ</div>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, fontSize: 13 }}>
-          <Info label="Loại thủ tục" value={dossier.procedure} />
-          <Info label="Phường/Xã" value={dossier.wards?.name} />
-          <div>
-            <div style={{ color: "#6B7269", marginBottom: 2 }}>Người phụ trách</div>
-            {me.role === "Quản lý" && activeEmployees.length > 0 ? (
-              <ReassignEmployee dossierId={dossier.id} currentEmployeeId={dossier.assigned_employee_id} employees={activeEmployees} />
-            ) : (
-              <div style={{ fontWeight: 600 }}>{dossier.employees?.name || "—"}</div>
-            )}
-          </div>
-          <Info label="Loại hồ sơ" value={dossier.speed === "fast" ? "⚡ Nhanh" : "Thường"} />
-          <Info label="Hạn xử lý" value={fmtDate(dossier.due_at)} />
-          <Info label="Ngày tạo" value={fmtDate(dossier.created_at)} />
-        </div>
-      </div>
-
-      <div style={{ background: "#fff", border: "1px solid #E2E5DF", borderRadius: 12, padding: 20, marginBottom: 16, display: "flex", flexDirection: "column", gap: 12 }}>
-        <div style={{ fontWeight: 700, fontSize: 14 }}>Hồ sơ đính kèm</div>
-        <FileUploadField dossierId={dossier.id} kind="appointment" label="Giấy hẹn" currentPath={dossier.appointment_file_path} />
-        <FileUploadField dossierId={dossier.id} kind="license" label="Giấy chứng nhận (GCN)" currentPath={dossier.license_file_path} />
-      </div>
-
-      <StatusActions
-        dossierId={dossier.id}
-        currentStatus={dossier.status}
-        appointmentUploaded={dossier.appointment_uploaded}
-        licenseUploaded={dossier.license_uploaded}
-      />
-
-      {history && history.length > 0 && (
-        <div style={{ background: "#fff", border: "1px solid #E2E5DF", borderRadius: 12, padding: 20, marginTop: 16 }}>
-          <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 12 }}>Lịch sử thao tác</div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-            {history.map((h, i) => {
-              const hs = STATUS[h.status] || { label: h.status, color: "#333" };
-              return (
-                <div key={i} style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 13 }}>
-                  <span style={{ width: 6, height: 6, borderRadius: "50%", background: hs.color, flexShrink: 0 }} />
-                  <span style={{ fontWeight: 600 }}>{hs.label}</span>
-                  <span style={{ color: "#6B7269" }}>bởi {h.employees?.name || "—"}</span>
-                  <span style={{ marginLeft: "auto", color: "#6B7269", fontSize: 12 }}>{fmtDate(h.at)}</span>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
-    </div>
+    <label style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: 13, color: "#333" }}>
+      {label}
+      {children}
+    </label>
   );
 }
 
-function Info({ label, value }) {
+export default function NewDossierPage() {
+  const router = useRouter();
+  const [supabase] = useState(() => createClient());
+
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  const [me, setMe] = useState(null);
+  const [wards, setWards] = useState([]);
+  const [employees, setEmployees] = useState([]);
+
+  const [form, setForm] = useState({
+    code: "",
+    name: "",
+    procedure: "",
+    ward_id: "",
+    assigned_employee_id: "",
+    speed: "normal",
+  });
+
+  useEffect(() => {
+    (async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        router.push("/login");
+        return;
+      }
+
+      const { data: meRow } = await supabase
+        .from("employees")
+        .select("id, role")
+        .eq("auth_user_id", user.id)
+        .single();
+
+      const { data: wardList } = await supabase
+        .from("wards")
+        .select("id, name")
+        .order("name");
+
+      let employeeList = [];
+      if (meRow?.role === "Quản lý") {
+        const { data } = await supabase
+          .from("employees")
+          .select("id, name")
+          .eq("status", "Đang hoạt động")
+          .order("name");
+        employeeList = data || [];
+      }
+
+      setMe(meRow || null);
+      setWards(wardList || []);
+      setEmployees(employeeList);
+      setForm((f) => ({
+        ...f,
+        assigned_employee_id: meRow?.id || "",
+        code: suggestCode(),
+      }));
+      setLoading(false);
+    })();
+  }, [router, supabase]);
+
+  function update(key, value) {
+    setForm((f) => ({ ...f, [key]: value }));
+  }
+
+  async function handleSubmit(e) {
+    e.preventDefault();
+    setError("");
+
+    if (!form.code.trim() || !form.name.trim()) {
+      setError("Vui lòng nhập đầy đủ Mã hồ sơ và Tên hộ kinh doanh.");
+      return;
+    }
+
+    setSaving(true);
+
+    const payload = {
+      code: form.code.trim(),
+      name: form.name.trim(),
+      group: "Hộ kinh doanh",
+      procedure: form.procedure.trim() || null,
+      ward_id: form.ward_id || null,
+      assigned_employee_id: form.assigned_employee_id || null,
+      speed: form.speed,
+    };
+
+    const { data, error: insertError } = await supabase
+      .from("dossiers")
+      .insert(payload)
+      .select("id")
+      .single();
+
+    setSaving(false);
+
+    if (insertError) {
+      setError(
+        insertError.code === "23505"
+          ? "Mã hồ sơ này đã tồn tại, vui lòng đổi mã khác."
+          : "Có lỗi khi lưu hồ sơ: " + insertError.message
+      );
+      return;
+    }
+
+    router.push(`/hkd/${data.id}`);
+  }
+
+  if (loading) {
+    return <div style={{ padding: 24 }}>Đang tải...</div>;
+  }
+
   return (
-    <div>
-      <div style={{ color: "#6B7269", marginBottom: 2 }}>{label}</div>
-      <div style={{ fontWeight: 600 }}>{value || "—"}</div>
+    <div style={{ maxWidth: 640, margin: "0 auto", padding: "12px 4px" }}>
+      <Link href="/hkd" style={{ fontSize: 13, color: "#687269", textDecoration: "none" }}>
+        ← Quay lại danh sách
+      </Link>
+
+      <h1 style={{ fontSize: 20, fontWeight: 700, margin: "12px 0 20px" }}>
+        Tạo hồ sơ Hộ kinh doanh mới
+      </h1>
+
+      <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+        <Field label="Mã hồ sơ *">
+          <input value={form.code} onChange={(e) => update("code", e.target.value)} style={inputStyle} />
+        </Field>
+
+        <Field label="Tên hộ kinh doanh *">
+          <input
+            value={form.name}
+            onChange={(e) => update("name", e.target.value)}
+            placeholder="VD: HỘ KINH DOANH NGUYỄN VĂN A"
+            style={inputStyle}
+          />
+        </Field>
+
+        <Field label="Thủ tục">
+          <input
+            value={form.procedure}
+            onChange={(e) => update("procedure", e.target.value)}
+            placeholder="VD: Thành lập HKD"
+            style={inputStyle}
+          />
+        </Field>
+
+        <Field label="Phường/Xã">
+          <select value={form.ward_id} onChange={(e) => update("ward_id", e.target.value)} style={inputStyle}>
+            <option value="">— Chọn phường/xã —</option>
+            {wards.map((w) => (
+              <option key={w.id} value={w.id}>{w.name}</option>
+            ))}
+          </select>
+        </Field>
+
+        {me?.role === "Quản lý" && (
+          <Field label="Nhân viên phụ trách">
+            <select
+              value={form.assigned_employee_id}
+              onChange={(e) => update("assigned_employee_id", e.target.value)}
+              style={inputStyle}
+            >
+              <option value="">— Chọn nhân viên —</option>
+              {employees.map((emp) => (
+                <option key={emp.id} value={emp.id}>{emp.name}</option>
+              ))}
+            </select>
+          </Field>
+        )}
+
+        <Field label="Tốc độ xử lý">
+          <select value={form.speed} onChange={(e) => update("speed", e.target.value)} style={inputStyle}>
+            <option value="normal">Bình thường</option>
+            <option value="fast">Nhanh</option>
+          </select>
+        </Field>
+
+        {error && <div style={{ color: "#A9201F", fontSize: 13 }}>{error}</div>}
+
+        <button
+          type="submit"
+          disabled={saving}
+          style={{
+            background: "#A9201F",
+            color: "#fff",
+            border: "none",
+            borderRadius: 8,
+            padding: "10px 16px",
+            fontSize: 14,
+            fontWeight: 600,
+            cursor: saving ? "default" : "pointer",
+            opacity: saving ? 0.7 : 1,
+          }}
+        >
+          {saving ? "Đang lưu..." : "Tạo hồ sơ"}
+        </button>
+      </form>
     </div>
   );
 }
