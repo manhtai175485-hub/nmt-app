@@ -9,6 +9,8 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "docxtemplater": "^3.47.0",
+    "pizzip": "^3.1.6",
     "@supabase/ssr": "^0.5.2",
     "@supabase/supabase-js": "^2.45.4",
     "lucide-react": "^0.400.0",
