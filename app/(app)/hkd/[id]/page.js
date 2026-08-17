@@ -3,6 +3,7 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabaseServer";
 import { STATUS, fmtDate } from "@/lib/constants";
 import StatusActions from "@/components/StatusActions";
+import FileUploadField from "@/components/FileUploadField";
 
 export default async function DossierDetailPage({ params }) {
   const supabase = createClient();
@@ -45,7 +46,18 @@ export default async function DossierDetailPage({ params }) {
         </div>
       </div>
 
-      <StatusActions dossierId={dossier.id} currentStatus={dossier.status} />
+      <div style={{ background: "#fff", border: "1px solid #E2E5DF", borderRadius: 12, padding: 20, marginBottom: 16, display: "flex", flexDirection: "column", gap: 12 }}>
+        <div style={{ fontWeight: 700, fontSize: 14 }}>Hồ sơ đính kèm</div>
+        <FileUploadField dossierId={dossier.id} kind="appointment" label="Giấy hẹn" currentPath={dossier.appointment_file_path} />
+        <FileUploadField dossierId={dossier.id} kind="license" label="Giấy chứng nhận (GCN)" currentPath={dossier.license_file_path} />
+      </div>
+
+      <StatusActions
+        dossierId={dossier.id}
+        currentStatus={dossier.status}
+        appointmentUploaded={dossier.appointment_uploaded}
+        licenseUploaded={dossier.license_uploaded}
+      />
 
       {history && history.length > 0 && (
         <div style={{ background: "#fff", border: "1px solid #E2E5DF", borderRadius: 12, padding: 20, marginTop: 16 }}>
