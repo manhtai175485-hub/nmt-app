@@ -46,6 +46,23 @@ export default async function DossierDetailPage({ params }) {
         <h1 style={{ fontSize: 20, fontWeight: 700, margin: 0 }}>{dossier.code}</h1>
         <span style={{ padding: "3px 10px", borderRadius: 999, fontSize: 12, fontWeight: 600, color: st.color, background: st.bg }}>{st.label}</span>
       </div>
+  <a
+  href={`/api/export-dossier/${dossier.id}`}
+          style={{
+            display: "inline-block",
+            border: "1px solid #A9201F",
+            color: "#A9201F",
+            background: "#fff",
+            borderRadius: 8,
+            padding: "6px 14px",
+            fontSize: 13,
+            fontWeight: 600,
+            textDecoration: "none",
+            marginBottom: 16,
+          }}
+        >
+          📄 Xuất Word
+        </a>
       <div style={{ fontSize: 14, color: "#1F2421", marginBottom: 20 }}>{dossier.name}</div>
 
       <div style={{ background: "#fff", border: "1px solid #E2E5DF", borderRadius: 12, padding: 20, marginBottom: 16 }}>
