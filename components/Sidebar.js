@@ -2,6 +2,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabaseClient";
+import NotificationBell from "@/components/NotificationBell";
 
 const NAV = [
   { href: "/dashboard", label: "Tổng quan" },
@@ -12,7 +13,7 @@ const NAV = [
   { href: "/report", label: "Báo cáo" },
 ];
 
-export default function Sidebar({ employee }) {
+export default function Sidebar({ employee, notifications = [] }) {
   const pathname = usePathname();
   const router = useRouter();
   const supabase = createClient();
@@ -27,6 +28,7 @@ export default function Sidebar({ employee }) {
   return (
     <div style={{ width: 220, flexShrink: 0, background: "#fff", borderRight: "1px solid #E2E5DF", padding: 16, display: "flex", flexDirection: "column", minHeight: "100vh" }}>
       <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 20, color: "#A9201F" }}>Tư Vấn NMT</div>
+      <NotificationBell items={notifications} />
       <div style={{ flex: 1 }}>
         {NAV.filter((n) => !n.managerOnly || isManager).map((n) => (
           <Link key={n.href} href={n.href}

@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabaseClient";
 import { STATUS, NEXT_STATUS } from "@/lib/constants";
 
-export default function StatusActions({ dossierId, currentStatus }) {
+export default function StatusActions({ dossierId, currentStatus, appointmentUploaded, licenseUploaded }) {
   const router = useRouter();
   const supabase = createClient();
   const [loading, setLoading] = useState(false);
@@ -56,13 +56,20 @@ export default function StatusActions({ dossierId, currentStatus }) {
     );
   }
 
+  const gateMessage =
+    currentStatus === "pending" && !appointmentUploaded ? "Cần tải lên Giấy hẹn trước khi chuyển trạng thái." :
+    currentStatus === "approved" && !licenseUploaded ? "Cần tải lên Giấy chứng nhận (GCN) trước khi gửi." :
+    null;
+  const blocked = !!gateMessage;
+
   return (
     <div style={{ background: "#fff", border: "1px solid #E2E5DF", borderRadius: 12, padding: 20 }}>
       <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 12 }}>Thao tác</div>
       {error && <div style={{ color: "#C23616", fontSize: 12, marginBottom: 10 }}>{error}</div>}
+      {gateMessage && <div style={{ color: "#8A6D00", fontSize: 12, marginBottom: 10 }}>⚠ {gateMessage}</div>}
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
         {next && (
-          <button onClick={() => advance(next)} disabled={loading} style={btnStyle}>
+          <button onClick={() => advance(next)} disabled={loading || blocked} style={{ ...btnStyle, opacity: blocked ? 0.5 : 1, cursor: blocked ? "not-allowed" : "pointer" }}>
             {loading ? "Đang xử lý..." : `Chuyển sang: ${STATUS[next]?.label || next}`}
           </button>
         )}
