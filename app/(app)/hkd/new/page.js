@@ -204,10 +204,13 @@ export default function NewDossierPage() {
 
   function addIndustry(item) {
     if (!item.code || !item.name) return;
-    setIndustries((prev) => (prev.some((x) => x.code === item.code) ? prev : [...prev, item]));
+    setIndustries((prev) => (prev.some((x) => x.code === item.code) ? prev : [...prev, { ...item, detail: "" }]));
   }
   function removeIndustry(codeToRemove) {
     setIndustries((prev) => prev.filter((x) => x.code !== codeToRemove));
+  }
+  function updateIndustryDetail(codeToUpdate, detail) {
+    setIndustries((prev) => prev.map((x) => (x.code === codeToUpdate ? { ...x, detail } : x)));
   }
 
   function computeFieldErrors() {
@@ -292,6 +295,7 @@ export default function NewDossierPage() {
         code: i.code,
         name: i.name,
         is_main: idx === 0,
+        detail: i.detail?.trim() || null,
       }));
       await supabase.from("dossier_industries").insert(rows);
     }
@@ -489,15 +493,23 @@ export default function NewDossierPage() {
             {industries.length === 0 ? (
               <div style={{ fontSize: 13, color: "#5B6660" }}>Chưa có ngành nghề nào.</div>
             ) : (
-              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                 {industries.map((i, idx) => (
-                  <div key={i.code} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "6px 10px", background: idx === 0 ? "#F7E7E4" : "#FAFBF9", borderRadius: 8 }}>
-                    <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                      <span style={{ fontFamily: "monospace", color: "#A9201F", fontWeight: 700, fontSize: 12 }}>{i.code}</span>
-                      <span style={{ fontSize: 13, color: "#1F2421" }}>{i.name}</span>
-                      {idx === 0 && <span style={{ fontSize: 11, fontWeight: 600, color: "#A9201F", background: "#fff", padding: "2px 6px", borderRadius: 6 }}>Ngành chính</span>}
+                  <div key={i.code} style={{ padding: "8px 10px", background: idx === 0 ? "#F7E7E4" : "#FAFBF9", borderRadius: 8 }}>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                      <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                        <span style={{ fontFamily: "monospace", color: "#A9201F", fontWeight: 700, fontSize: 12 }}>{i.code}</span>
+                        <span style={{ fontSize: 13, color: "#1F2421" }}>{i.name}</span>
+                        {idx === 0 && <span style={{ fontSize: 11, fontWeight: 600, color: "#A9201F", background: "#fff", padding: "2px 6px", borderRadius: 6 }}>Ngành chính</span>}
+                      </div>
+                      <span onClick={() => removeIndustry(i.code)} style={{ color: "#5B6660", cursor: "pointer", fontSize: 13 }}>✕</span>
                     </div>
-                    <span onClick={() => removeIndustry(i.code)} style={{ color: "#5B6660", cursor: "pointer", fontSize: 13 }}>✕</span>
+                    <textarea
+                      placeholder="Chi tiết hoạt động của ngành này (tự nhập, không bắt buộc)..."
+                      value={i.detail || ""}
+                      onChange={(e) => updateIndustryDetail(i.code, e.target.value)}
+                      style={{ ...inputStyle, minHeight: 40, resize: "vertical", fontSize: 12, marginTop: 6, background: "#fff" }}
+                    />
                   </div>
                 ))}
               </div>
