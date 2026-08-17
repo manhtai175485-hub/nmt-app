@@ -4,9 +4,13 @@ import { createClient } from "@/lib/supabaseServer";
 import { STATUS, fmtDate } from "@/lib/constants";
 import StatusActions from "@/components/StatusActions";
 import FileUploadField from "@/components/FileUploadField";
+import ReassignEmployee from "@/components/ReassignEmployee";
 
 export default async function DossierDetailPage({ params }) {
   const supabase = createClient();
+
+  const { data: { user } } = await supabase.auth.getUser();
+  const { data: me } = await supabase.from("employees").select("id, role").eq("auth_user_id", user.id).single();
 
   const { data: dossier } = await supabase
     .from("dossiers")
@@ -15,6 +19,16 @@ export default async function DossierDetailPage({ params }) {
     .single();
 
   if (!dossier) notFound();
+
+  let activeEmployees = [];
+  if (me.role === "Quản lý") {
+    const { data } = await supabase
+      .from("employees")
+      .select("id, name")
+      .eq("status", "Đang hoạt động")
+      .order("name");
+    activeEmployees = data || [];
+  }
 
   const { data: history } = await supabase
     .from("dossier_history")
@@ -39,7 +53,14 @@ export default async function DossierDetailPage({ params }) {
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, fontSize: 13 }}>
           <Info label="Loại thủ tục" value={dossier.procedure} />
           <Info label="Phường/Xã" value={dossier.wards?.name} />
-          <Info label="Người phụ trách" value={dossier.employees?.name} />
+          <div>
+            <div style={{ color: "#6B7269", marginBottom: 2 }}>Người phụ trách</div>
+            {me.role === "Quản lý" && activeEmployees.length > 0 ? (
+              <ReassignEmployee dossierId={dossier.id} currentEmployeeId={dossier.assigned_employee_id} employees={activeEmployees} />
+            ) : (
+              <div style={{ fontWeight: 600 }}>{dossier.employees?.name || "—"}</div>
+            )}
+          </div>
           <Info label="Loại hồ sơ" value={dossier.speed === "fast" ? "⚡ Nhanh" : "Thường"} />
           <Info label="Hạn xử lý" value={fmtDate(dossier.due_at)} />
           <Info label="Ngày tạo" value={fmtDate(dossier.created_at)} />
