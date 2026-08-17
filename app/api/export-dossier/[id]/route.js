@@ -82,8 +82,8 @@ export async function GET(request, { params }) {
     von: formatNumber(dossier.capital),
     von_bang_chu: dossier.capital_words || "",
     lien_lac_so_nha: dossier.contact_address || "",
-    lien_lac_phuong: tenPhuong,
-    lien_lac_tinh: "Thành phố Hà Nội",
+    lien_lac_phuong: "",
+    lien_lac_tinh: "",
     ben_b_ho_ten: emp.name || "",
     ben_b_gioi_tinh: (emp.gender || "").toLowerCase(),
     ben_b_ngay_sinh: formatDate(emp.dob),
@@ -92,7 +92,7 @@ export async function GET(request, { params }) {
     ben_b_dien_thoai: emp.phone || "",
   };
 
-  const templatePath = path.join(process.cwd(), "templates", "mau-don-hkd.docx");
+  const templatePath = path.join(process.cwd(), "templates", "mau-don-hkd-v2.docx");
   const content = fs.readFileSync(templatePath, "binary");
   const zip = new PizZip(content);
   const doc = new Docxtemplater(zip, { paragraphLoop: true, linebreaks: true });
