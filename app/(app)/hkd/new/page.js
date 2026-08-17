@@ -1,9 +1,49 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabaseClient";
+
+const PROCEDURES = ["Thành lập HKD", "Thay đổi HKD", "Chấm dứt HKD"];
+const ISSUING_OFFICES = ["Phòng Kinh tế, Hạ tầng và Đô thị", "Phòng Kinh tế"];
+const GENDERS = ["Nam", "Nữ", "Khác"];
+const ADDRESS_TYPE_RE = /phố|đường|ngõ|ngách|thôn|xóm|tổ dân phố/i;
+
+const INDUSTRY_CODES = [
+  { code: "4711", name: "Bán lẻ lương thực, thực phẩm trong cửa hàng chuyên doanh" },
+  { code: "5610", name: "Nhà hàng và các dịch vụ ăn uống phục vụ lưu động" },
+  { code: "6201", name: "Lập trình máy vi tính" },
+  { code: "4791", name: "Bán lẻ theo yêu cầu đặt hàng qua bưu điện hoặc internet" },
+  { code: "9313", name: "Hoạt động của các cơ sở thể thao" },
+  { code: "9602", name: "Cắt tóc, làm đầu, gội đầu" },
+  { code: "4321", name: "Lắp đặt hệ thống điện" },
+  { code: "6820", name: "Tư vấn, môi giới, đấu giá bất động sản" },
+  { code: "1410", name: "May trang phục (trừ trang phục từ da lông thú)" },
+];
+
+const SEVERITY_META = {
+  block: { icon: "🔴", label: "Lỗi bắt buộc xử lý", color: "#E14434", bg: "#FCE7E4" },
+  warning: { icon: "🟠", label: "Lưu ý nghiệp vụ", color: "#C98A2B", bg: "#FBF1E1" },
+  tip: { icon: "🔵", label: "Kinh nghiệm xử lý", color: "#3454A6", bg: "#E8ECF6" },
+};
+
+const inputStyle = {
+  border: "1px solid #ddd",
+  borderRadius: 8,
+  padding: "8px 10px",
+  fontSize: 14,
+  outline: "none",
+  width: "100%",
+  boxSizing: "border-box",
+};
+
+const cardStyle = {
+  border: "1px solid #E9EDE8",
+  borderRadius: 12,
+  padding: 16,
+  background: "#fff",
+};
 
 function suggestCode() {
   const now = new Date();
@@ -14,22 +54,56 @@ function suggestCode() {
   return `HKD-${yy}${mm}${dd}${rand}`;
 }
 
-const inputStyle = {
-  border: "1px solid #ddd",
-  borderRadius: 8,
-  padding: "8px 10px",
-  fontSize: 14,
-  outline: "none",
-};
-
-function Field({ label, children }) {
+function Field({ label, children, hint, error }) {
   return (
     <label style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: 13, color: "#333" }}>
       {label}
       {children}
+      {hint && !error && <span style={{ fontSize: 11, color: "#888" }}>{hint}</span>}
+      {error && <span style={{ fontSize: 11, color: "#C23616" }}>{error}</span>}
     </label>
   );
 }
+
+function SectionHeader({ n, title, subtitle }) {
+  return (
+    <div style={{ display: "flex", gap: 10, marginBottom: 14 }}>
+      <div
+        style={{
+          width: 26, height: 26, borderRadius: 7, background: "#1F2421", color: "#fff",
+          display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11,
+          fontWeight: 700, flexShrink: 0,
+        }}
+      >
+        {n}
+      </div>
+      <div>
+        <div style={{ fontWeight: 700, fontSize: 14, color: "#1F2421" }}>{title}</div>
+        {subtitle && <div style={{ fontSize: 12, color: "#5B6660", marginTop: 2 }}>{subtitle}</div>}
+      </div>
+    </div>
+  );
+}
+
+const emptyForm = {
+  procedure: PROCEDURES[0],
+  speed: "normal",
+  issuingOffice: "",
+  ward_id: "",
+  ownerName: "",
+  gender: "",
+  dob: "",
+  cccd: "",
+  phone: "",
+  email: "",
+  businessName: "",
+  addressDetail: "",
+  province: "",
+  contactAddress: "",
+  capital: "",
+  capitalWords: "",
+  authorizedEmployeeId: "",
+};
 
 export default function NewDossierPage() {
   const router = useRouter();
@@ -42,15 +116,20 @@ export default function NewDossierPage() {
   const [me, setMe] = useState(null);
   const [wards, setWards] = useState([]);
   const [employees, setEmployees] = useState([]);
+  const [code] = useState(() => suggestCode());
 
-  const [form, setForm] = useState({
-    code: "",
-    name: "",
-    procedure: "",
-    ward_id: "",
-    assigned_employee_id: "",
-    speed: "normal",
-  });
+  const [form, setForm] = useState(emptyForm);
+  const [industries, setIndustries] = useState([]);
+  const [industryQuery, setIndustryQuery] = useState("");
+  const [manualName, setManualName] = useState("");
+  const [manualCode, setManualCode] = useState("");
+
+  const [warehouse, setWarehouse] = useState([]);
+  const [ackRead, setAckRead] = useState(false);
+
+  const [fieldErrors, setFieldErrors] = useState({});
+  const [checkResult, setCheckResult] = useState(null);
+  const [checked, setChecked] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -66,76 +145,160 @@ export default function NewDossierPage() {
         .eq("auth_user_id", user.id)
         .single();
 
-      const { data: wardList } = await supabase
-        .from("wards")
-        .select("id, name")
-        .order("name");
+      const { data: wardList } = await supabase.from("wards").select("id, name").order("name");
 
       let employeeList = [];
-      if (meRow?.role === "Quản lý") {
-        const { data } = await supabase
-          .from("employees")
-          .select("id, name")
-          .eq("status", "Đang hoạt động")
-          .order("name");
-        employeeList = data || [];
-      }
+      const { data: allActive } = await supabase
+        .from("employees")
+        .select("id, name, role")
+        .eq("status", "Đang hoạt động")
+        .order("name");
+      employeeList = allActive || [];
 
       setMe(meRow || null);
       setWards(wardList || []);
       setEmployees(employeeList);
-      setForm((f) => ({
-        ...f,
-        assigned_employee_id: meRow?.id || "",
-        code: suggestCode(),
-      }));
+      setForm((f) => ({ ...f, authorizedEmployeeId: meRow?.id || "" }));
       setLoading(false);
     })();
   }, [router, supabase]);
+
+  const wardName = useMemo(
+    () => wards.find((w) => w.id === form.ward_id)?.name || "",
+    [wards, form.ward_id]
+  );
+
+  useEffect(() => {
+    if (!form.ward_id) {
+      setWarehouse([]);
+      setAckRead(false);
+      return;
+    }
+    (async () => {
+      const { data } = await supabase
+        .from("warehouse_entries")
+        .select("id, title, content, suggested_fix, severity")
+        .eq("group", "Hộ kinh doanh")
+        .eq("procedure", form.procedure)
+        .eq("ward_id", form.ward_id)
+        .eq("review_status", "approved")
+        .eq("hidden", false);
+      setWarehouse(data || []);
+      setAckRead(false);
+    })();
+  }, [form.ward_id, form.procedure, supabase]);
+
+  const whBlocking = warehouse.filter((w) => w.severity === "block");
+  const needsAck = warehouse.length > 0 && !ackRead;
+
+  const industryMatches = industryQuery
+    ? INDUSTRY_CODES.filter(
+        (i) =>
+          i.name.toLowerCase().includes(industryQuery.toLowerCase()) ||
+          i.code.includes(industryQuery)
+      )
+    : [];
 
   function update(key, value) {
     setForm((f) => ({ ...f, [key]: value }));
   }
 
-  async function handleSubmit(e) {
-    e.preventDefault();
-    setError("");
+  function addIndustry(item) {
+    if (!item.code || !item.name) return;
+    setIndustries((prev) => (prev.some((x) => x.code === item.code) ? prev : [...prev, item]));
+  }
+  function removeIndustry(codeToRemove) {
+    setIndustries((prev) => prev.filter((x) => x.code !== codeToRemove));
+  }
 
-    if (!form.code.trim() || !form.name.trim()) {
-      setError("Vui lòng nhập đầy đủ Mã hồ sơ và Tên hộ kinh doanh.");
-      return;
+  function computeFieldErrors() {
+    const err = {};
+    if (!form.issuingOffice) err.issuingOffice = "Chọn nơi cấp.";
+    if (!form.ward_id) err.ward_id = "Chọn phường/xã.";
+    if (!form.ownerName.trim()) err.ownerName = "Nhập họ tên chủ hộ.";
+    if (!/^\d{12}$/.test(form.cccd)) err.cccd = "CCCD phải gồm đúng 12 chữ số.";
+    if (!/^\d{10}$/.test(form.phone)) err.phone = "Số điện thoại phải gồm đúng 10 chữ số.";
+    if (industries.length === 0) err.industries = "Thêm ít nhất 1 ngành nghề.";
+    if (!form.authorizedEmployeeId) err.authorizedEmployeeId = "Chọn người ủy quyền.";
+    return err;
+  }
+
+  function runCheck() {
+    const err = computeFieldErrors();
+    const errorList = Object.values(err);
+
+    if (form.addressDetail && !ADDRESS_TYPE_RE.test(form.addressDetail)) {
+      errorList.push(
+        `"${form.addressDetail}" có thể thiếu loại đường (phố/đường/ngõ/ngách/thôn/xóm/tổ dân phố...).`
+      );
     }
+    whBlocking.forEach((w) => errorList.push(`[Kho nghiệp vụ – bắt buộc xử lý] ${w.title}: ${w.content}`));
+    const notices = warehouse
+      .filter((w) => w.severity !== "block")
+      .map((w) => `[${SEVERITY_META[w.severity].label}] ${w.title}: ${w.content}`);
 
+    setFieldErrors(err);
+    setCheckResult({ errors: errorList, notices });
+    setChecked(Object.keys(err).length === 0 && whBlocking.length === 0);
+  }
+
+  async function handleCreate() {
+    if (!checked) return;
+    setError("");
     setSaving(true);
 
     const payload = {
-      code: form.code.trim(),
-      name: form.name.trim(),
+      code,
+      name: form.businessName.trim() || form.ownerName.trim(),
       group: "Hộ kinh doanh",
-      procedure: form.procedure.trim() || null,
-      ward_id: form.ward_id || null,
-      assigned_employee_id: form.assigned_employee_id || null,
+      procedure: form.procedure,
+      ward_id: form.ward_id,
+      assigned_employee_id: form.authorizedEmployeeId || null,
       speed: form.speed,
+      issuing_office: form.issuingOffice,
+      owner_name: form.ownerName.trim(),
+      gender: form.gender || null,
+      dob: form.dob || null,
+      cccd: form.cccd,
+      phone: form.phone,
+      email: form.email.trim() || null,
+      business_name: form.businessName.trim() || null,
+      address_detail: form.addressDetail.trim() || null,
+      province: form.province.trim() || null,
+      contact_address: form.contactAddress.trim() || null,
+      capital: form.capital ? Number(form.capital) : null,
+      capital_words: form.capitalWords.trim() || null,
+      authorized_employee_id: form.authorizedEmployeeId || null,
     };
 
-    const { data, error: insertError } = await supabase
+    const { data: dossier, error: insertError } = await supabase
       .from("dossiers")
       .insert(payload)
       .select("id")
       .single();
 
-    setSaving(false);
-
     if (insertError) {
+      setSaving(false);
       setError(
         insertError.code === "23505"
-          ? "Mã hồ sơ này đã tồn tại, vui lòng đổi mã khác."
+          ? "Mã hồ sơ này đã tồn tại, vui lòng thử lại."
           : "Có lỗi khi lưu hồ sơ: " + insertError.message
       );
       return;
     }
 
-    router.push(`/hkd/${data.id}`);
+    if (industries.length > 0) {
+      const rows = industries.map((i, idx) => ({
+        dossier_id: dossier.id,
+        code: i.code,
+        name: i.name,
+        is_main: idx === 0,
+      }));
+      await supabase.from("dossier_industries").insert(rows);
+    }
+
+    setSaving(false);
+    router.push(`/hkd/${dossier.id}`);
   }
 
   if (loading) {
@@ -143,89 +306,290 @@ export default function NewDossierPage() {
   }
 
   return (
-    <div style={{ maxWidth: 640, margin: "0 auto", padding: "12px 4px" }}>
+    <div style={{ maxWidth: 680, margin: "0 auto", padding: "12px 4px" }}>
       <Link href="/hkd" style={{ fontSize: 13, color: "#687269", textDecoration: "none" }}>
         ← Quay lại danh sách
       </Link>
 
-      <h1 style={{ fontSize: 20, fontWeight: 700, margin: "12px 0 20px" }}>
-        Tạo hồ sơ Hộ kinh doanh mới
-      </h1>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", margin: "12px 0 4px" }}>
+        <h1 style={{ fontSize: 20, fontWeight: 700, margin: 0 }}>Tạo hồ sơ Hộ kinh doanh mới</h1>
+        <div
+          style={{
+            fontFamily: "monospace", fontSize: 13, fontWeight: 700, color: "#A9201F",
+            background: "#F7E7E4", padding: "4px 10px", borderRadius: 8,
+          }}
+        >
+          Mã hồ sơ: {code}
+        </div>
+      </div>
 
-      <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-        <Field label="Mã hồ sơ *">
-          <input value={form.code} onChange={(e) => update("code", e.target.value)} style={inputStyle} />
-        </Field>
-
-        <Field label="Tên hộ kinh doanh *">
-          <input
-            value={form.name}
-            onChange={(e) => update("name", e.target.value)}
-            placeholder="VD: HỘ KINH DOANH NGUYỄN VĂN A"
-            style={inputStyle}
-          />
-        </Field>
-
-        <Field label="Thủ tục">
-          <input
-            value={form.procedure}
-            onChange={(e) => update("procedure", e.target.value)}
-            placeholder="VD: Thành lập HKD"
-            style={inputStyle}
-          />
-        </Field>
-
-        <Field label="Phường/Xã">
-          <select value={form.ward_id} onChange={(e) => update("ward_id", e.target.value)} style={inputStyle}>
-            <option value="">— Chọn phường/xã —</option>
-            {wards.map((w) => (
-              <option key={w.id} value={w.id}>{w.name}</option>
-            ))}
-          </select>
-        </Field>
-
-        {me?.role === "Quản lý" && (
-          <Field label="Nhân viên phụ trách">
-            <select
-              value={form.assigned_employee_id}
-              onChange={(e) => update("assigned_employee_id", e.target.value)}
-              style={inputStyle}
-            >
-              <option value="">— Chọn nhân viên —</option>
-              {employees.map((emp) => (
-                <option key={emp.id} value={emp.id}>{emp.name}</option>
-              ))}
+      <div style={{ display: "flex", flexDirection: "column", gap: 14, marginTop: 16 }}>
+        <div style={cardStyle}>
+          <SectionHeader n="01" title="Loại thủ tục" />
+          <Field label="Loại thủ tục">
+            <select style={inputStyle} value={form.procedure} onChange={(e) => update("procedure", e.target.value)}>
+              {PROCEDURES.map((p) => <option key={p} value={p}>{p}</option>)}
             </select>
           </Field>
-        )}
+          <Field label="Loại hồ sơ">
+            <div style={{ display: "flex", gap: 8, marginTop: 6 }}>
+              {[{ k: "normal", l: "Thường (3 ngày làm việc)" }, { k: "fast", l: "⚡ Nhanh (1 ngày làm việc)" }].map((s) => (
+                <div
+                  key={s.k}
+                  onClick={() => update("speed", s.k)}
+                  style={{
+                    flex: 1, textAlign: "center", padding: "8px 0", borderRadius: 9, cursor: "pointer",
+                    fontSize: 13, fontWeight: 600,
+                    border: `1px solid ${form.speed === s.k ? "#A9201F" : "#E9EDE8"}`,
+                    color: form.speed === s.k ? "#A9201F" : "#5B6660",
+                    background: form.speed === s.k ? "#F7E7E4" : "#fff",
+                  }}
+                >
+                  {s.l}
+                </div>
+              ))}
+            </div>
+          </Field>
+        </div>
 
-        <Field label="Tốc độ xử lý">
-          <select value={form.speed} onChange={(e) => update("speed", e.target.value)} style={inputStyle}>
-            <option value="normal">Bình thường</option>
-            <option value="fast">Nhanh</option>
-          </select>
-        </Field>
+        <div style={cardStyle}>
+          <SectionHeader n="02" title="Nơi cấp và phường/xã" />
+          <Field label="Nơi cấp" error={fieldErrors.issuingOffice}>
+            <select style={inputStyle} value={form.issuingOffice} onChange={(e) => update("issuingOffice", e.target.value)}>
+              <option value="">Chọn nơi cấp</option>
+              {ISSUING_OFFICES.map((o) => <option key={o} value={o}>{o}</option>)}
+            </select>
+          </Field>
+          <Field label="Phường / xã" error={fieldErrors.ward_id}>
+            <select style={inputStyle} value={form.ward_id} onChange={(e) => update("ward_id", e.target.value)}>
+              <option value="">— Chọn phường/xã —</option>
+              {wards.map((w) => <option key={w.id} value={w.id}>{w.name}</option>)}
+            </select>
+          </Field>
+
+          {form.ward_id && (
+            <div style={{ background: warehouse.length ? "#FBF1E1" : "#FAFBF9", borderRadius: 9, padding: 12, fontSize: 13, marginTop: 4 }}>
+              <div style={{ fontWeight: 700, color: warehouse.length ? "#C98A2B" : "#5B6660", marginBottom: 8 }}>
+                {warehouse.length ? `⚠️ LƯU Ý HỒ SƠ TẠI ${wardName.toUpperCase()}` : `Kho nghiệp vụ — ${wardName}`}
+              </div>
+              {warehouse.length > 0 ? (
+                <>
+                  <div style={{ color: "#1F2421", marginBottom: 8 }}>
+                    Đã ghi nhận {warehouse.length} vấn đề nghiệp vụ trước đây cho <strong>{form.procedure}</strong>:
+                  </div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 10 }}>
+                    {warehouse.map((w) => {
+                      const sv = SEVERITY_META[w.severity];
+                      return (
+                        <div key={w.id} style={{ background: "#fff", borderRadius: 8, padding: "8px 10px", border: "1px solid #E9EDE8" }}>
+                          <div style={{ fontWeight: 700, color: sv.color, marginBottom: 2 }}>{sv.icon} {w.title}</div>
+                          <div style={{ color: "#1F2421", marginBottom: 2 }}>{w.content}</div>
+                          {w.suggested_fix && <div style={{ color: "#5B6660", fontSize: 12 }}>Hướng xử lý: {w.suggested_fix}</div>}
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, fontWeight: 600, color: "#1F2421", cursor: "pointer" }}>
+                    <input type="checkbox" checked={ackRead} onChange={(e) => setAckRead(e.target.checked)} />
+                    ✓ TÔI ĐÃ ĐỌC CÁC LƯU Ý
+                  </label>
+                </>
+              ) : (
+                <div style={{ color: "#5B6660" }}>Chưa có lưu ý nào cho phường/xã này.</div>
+              )}
+            </div>
+          )}
+        </div>
+
+        <div style={cardStyle}>
+          <SectionHeader n="03" title="Thông tin chủ hộ" />
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 12 }}>
+            <Field label="Họ tên chủ hộ" error={fieldErrors.ownerName}>
+              <input style={inputStyle} placeholder="NGUYỄN VĂN A" value={form.ownerName} onChange={(e) => update("ownerName", e.target.value)} />
+            </Field>
+            <Field label="Giới tính chủ hộ">
+              <select style={inputStyle} value={form.gender} onChange={(e) => update("gender", e.target.value)}>
+                <option value="">Chọn giới tính</option>
+                {GENDERS.map((g) => <option key={g} value={g}>{g}</option>)}
+              </select>
+            </Field>
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 12 }}>
+            <Field label="Ngày sinh chủ hộ">
+              <input type="date" style={inputStyle} value={form.dob} onChange={(e) => update("dob", e.target.value)} />
+            </Field>
+            <Field label="Số CCCD" error={fieldErrors.cccd} hint="12 chữ số">
+              <input style={inputStyle} placeholder="Nhập đủ 12 chữ số" value={form.cccd}
+                onChange={(e) => update("cccd", e.target.value.replace(/\D/g, "").slice(0, 12))} />
+            </Field>
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 12 }}>
+            <Field label="Số điện thoại" error={fieldErrors.phone} hint="10 chữ số">
+              <input style={inputStyle} placeholder="0xxxxxxxxx" value={form.phone}
+                onChange={(e) => update("phone", e.target.value.replace(/\D/g, "").slice(0, 10))} />
+            </Field>
+            <Field label="Email" hint="Không bắt buộc">
+              <input style={inputStyle} placeholder="ten@email.com" value={form.email} onChange={(e) => update("email", e.target.value)} />
+            </Field>
+          </div>
+          <Field label="Tên hộ kinh doanh">
+            <input style={inputStyle} placeholder="Ví dụ: NGUYỄN VĂN A 1990" value={form.businessName} onChange={(e) => update("businessName", e.target.value)} />
+          </Field>
+        </div>
+
+        <div style={cardStyle}>
+          <SectionHeader n="04" title="Địa chỉ" />
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 12 }}>
+            <Field label="Địa chỉ chi tiết trụ sở" hint="Ghi rõ loại đường: phố/đường/ngõ/ngách/thôn/xóm...">
+              <input style={inputStyle} placeholder="Số nhà, ngõ, đường, tổ/thôn..." value={form.addressDetail} onChange={(e) => update("addressDetail", e.target.value)} />
+            </Field>
+            <Field label="Tỉnh / Thành phố">
+              <input style={inputStyle} value={form.province} onChange={(e) => update("province", e.target.value)} />
+            </Field>
+          </div>
+          <Field label="Địa chỉ liên lạc">
+            <textarea style={{ ...inputStyle, minHeight: 56, resize: "vertical" }} placeholder="Nơi ở hiện tại" value={form.contactAddress} onChange={(e) => update("contactAddress", e.target.value)} />
+          </Field>
+        </div>
+
+        <div style={cardStyle}>
+          <SectionHeader n="05" title="Ngành, nghề kinh doanh" subtitle="Tìm theo mã hoặc tên — có thể thêm nhiều ngành." />
+          <Field label="Tìm ngành nghề" error={fieldErrors.industries}>
+            <input style={inputStyle} placeholder="Nhập mã (vd: 4711) hoặc tên (vd: may mặc)..." value={industryQuery} onChange={(e) => setIndustryQuery(e.target.value)} />
+            {industryMatches.length > 0 && (
+              <div style={{ border: "1px solid #E9EDE8", borderRadius: 9, marginTop: 4, overflow: "hidden" }}>
+                {industryMatches.map((i) => (
+                  <div key={i.code} onClick={() => { addIndustry(i); setIndustryQuery(""); }}
+                    style={{ padding: "8px 12px", fontSize: 13, cursor: "pointer", borderBottom: "1px solid #E9EDE8", display: "flex", gap: 8 }}>
+                    <span style={{ fontFamily: "monospace", color: "#A9201F", fontWeight: 700 }}>{i.code}</span>
+                    <span style={{ color: "#1F2421" }}>{i.name}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </Field>
+
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 110px auto", gap: 8, alignItems: "end", margin: "12px 0" }}>
+            <Field label="Chưa có trong danh mục? Thêm thủ công">
+              <input style={inputStyle} placeholder="Tên ngành nghề..." value={manualName} onChange={(e) => setManualName(e.target.value)} />
+            </Field>
+            <Field label="Mã ngành">
+              <input style={inputStyle} placeholder="4773" value={manualCode} onChange={(e) => setManualCode(e.target.value.replace(/\D/g, "").slice(0, 4))} />
+            </Field>
+            <button
+              type="button"
+              onClick={() => { addIndustry({ code: manualCode, name: manualName }); setManualName(""); setManualCode(""); }}
+              style={{ border: "1px solid #A9201F", color: "#A9201F", background: "#fff", borderRadius: 8, padding: "8px 14px", fontSize: 13, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap" }}
+            >
+              + Thêm ngành nghề
+            </button>
+          </div>
+
+          <div style={{ border: "1px solid #E9EDE8", borderRadius: 9, padding: 12 }}>
+            <div style={{ fontSize: 12, fontWeight: 600, color: "#5B6660", marginBottom: 8 }}>DANH SÁCH NGÀNH NGHỀ ({industries.length})</div>
+            {industries.length === 0 ? (
+              <div style={{ fontSize: 13, color: "#5B6660" }}>Chưa có ngành nghề nào.</div>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                {industries.map((i, idx) => (
+                  <div key={i.code} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "6px 10px", background: idx === 0 ? "#F7E7E4" : "#FAFBF9", borderRadius: 8 }}>
+                    <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                      <span style={{ fontFamily: "monospace", color: "#A9201F", fontWeight: 700, fontSize: 12 }}>{i.code}</span>
+                      <span style={{ fontSize: 13, color: "#1F2421" }}>{i.name}</span>
+                      {idx === 0 && <span style={{ fontSize: 11, fontWeight: 600, color: "#A9201F", background: "#fff", padding: "2px 6px", borderRadius: 6 }}>Ngành chính</span>}
+                    </div>
+                    <span onClick={() => removeIndustry(i.code)} style={{ color: "#5B6660", cursor: "pointer", fontSize: 13 }}>✕</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginTop: 12 }}>
+            <Field label="Vốn kinh doanh">
+              <input style={inputStyle} placeholder="100.000.000" value={form.capital} onChange={(e) => update("capital", e.target.value.replace(/[^\d]/g, ""))} />
+            </Field>
+            <Field label="Tổng số (bằng chữ)">
+              <input style={inputStyle} placeholder="Một trăm triệu" value={form.capitalWords} onChange={(e) => update("capitalWords", e.target.value)} />
+            </Field>
+          </div>
+        </div>
+
+        <div style={cardStyle}>
+          <SectionHeader n="06" title="Người ủy quyền" />
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))", gap: 8 }}>
+            {employees.map((s) => (
+              <div key={s.id} onClick={() => update("authorizedEmployeeId", s.id)}
+                style={{
+                  border: `1px solid ${form.authorizedEmployeeId === s.id ? "#A9201F" : "#E9EDE8"}`,
+                  background: form.authorizedEmployeeId === s.id ? "#F7E7E4" : "#fff",
+                  borderRadius: 9, padding: "10px 12px", cursor: "pointer",
+                }}>
+                <div style={{ fontSize: 13, fontWeight: 600, color: "#1F2421" }}>{s.name}</div>
+              </div>
+            ))}
+          </div>
+          {fieldErrors.authorizedEmployeeId && (
+            <div style={{ fontSize: 12, color: "#E14434", marginTop: 8 }}>{fieldErrors.authorizedEmployeeId}</div>
+          )}
+        </div>
+
+        {checkResult && (
+          <div style={{ ...cardStyle, borderColor: checkResult.errors.length ? "#E14434" : "#2F6844" }}>
+            <div style={{ fontWeight: 700, fontSize: 14, color: "#1F2421", marginBottom: 10 }}>Kết quả kiểm tra</div>
+            {checkResult.errors.length > 0 && (
+              <div style={{ marginBottom: checkResult.notices.length ? 10 : 0 }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: "#E14434", marginBottom: 4 }}>🔴 LỖI DỮ LIỆU — CẦN SỬA</div>
+                <ul style={{ margin: 0, paddingLeft: 18, fontSize: 13, color: "#1F2421" }}>
+                  {checkResult.errors.map((e, i) => <li key={i}>{e}</li>)}
+                </ul>
+              </div>
+            )}
+            {checkResult.notices.length > 0 && (
+              <div>
+                <div style={{ fontSize: 12, fontWeight: 700, color: "#C98A2B", marginBottom: 4 }}>⚠️ LƯU Ý NGHIỆP VỤ</div>
+                <ul style={{ margin: 0, paddingLeft: 18, fontSize: 13, color: "#1F2421" }}>
+                  {checkResult.notices.map((n, i) => <li key={i}>{n}</li>)}
+                </ul>
+              </div>
+            )}
+            {checkResult.errors.length === 0 && checkResult.notices.length === 0 && (
+              <div style={{ fontSize: 13, color: "#2F6844" }}>Hồ sơ hợp lệ, không có lỗi hay lưu ý nào.</div>
+            )}
+          </div>
+        )}
 
         {error && <div style={{ color: "#A9201F", fontSize: 13 }}>{error}</div>}
 
-        <button
-          type="submit"
-          disabled={saving}
-          style={{
-            background: "#A9201F",
-            color: "#fff",
-            border: "none",
-            borderRadius: 8,
-            padding: "10px 16px",
-            fontSize: 14,
-            fontWeight: 600,
-            cursor: saving ? "default" : "pointer",
-            opacity: saving ? 0.7 : 1,
-          }}
-        >
-          {saving ? "Đang lưu..." : "Tạo hồ sơ"}
-        </button>
-      </form>
+        <div style={{ display: "flex", gap: 8 }}>
+          <button
+            type="button"
+            onClick={runCheck}
+            disabled={needsAck}
+            style={{
+              flex: 1, border: "1px solid #A9201F", color: "#A9201F", background: "#fff",
+              borderRadius: 8, padding: "10px 16px", fontSize: 14, fontWeight: 600,
+              cursor: needsAck ? "default" : "pointer", opacity: needsAck ? 0.5 : 1,
+            }}
+          >
+            Kiểm tra thông tin
+          </button>
+          <button
+            type="button"
+            onClick={handleCreate}
+            disabled={!checked || needsAck || saving}
+            style={{
+              flex: 1, background: "#A9201F", color: "#fff", border: "none", borderRadius: 8,
+              padding: "10px 16px", fontSize: 14, fontWeight: 600,
+              cursor: (!checked || needsAck || saving) ? "default" : "pointer",
+              opacity: (!checked || needsAck || saving) ? 0.5 : 1,
+            }}
+          >
+            {saving ? "Đang lưu..." : "Tạo hồ sơ"}
+          </button>
+        </div>
+        {needsAck && <div style={{ fontSize: 12, color: "#C98A2B" }}>Cần xác nhận đã đọc lưu ý Kho nghiệp vụ ở mục 02 trước khi kiểm tra/tạo hồ sơ.</div>}
+      </div>
     </div>
   );
 }
