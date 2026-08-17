@@ -43,14 +43,16 @@ export async function GET(request, { params }) {
 
   const { data: industries } = await supabase
     .from("dossier_industries")
-    .select("code, name, is_main")
+    .select("code, name, is_main, detail")
     .eq("dossier_id", id)
     .order("is_main", { ascending: false });
 
   const ind = industries || [];
-  const nganh = [0, 1, 2].map((i) => ({
-    ten: ind[i]?.name || "",
-    ma: ind[i]?.code || "",
+  const nganh = ind.map((i, idx) => ({
+    stt: idx + 1,
+    ten: i.name + (i.detail ? ` (Chi tiết: ${i.detail})` : ""),
+    ma: i.code,
+    x: idx === 0 ? "X" : "",
   }));
 
   const lap = splitDate(new Date().toISOString());
@@ -73,12 +75,7 @@ export async function GET(request, { params }) {
     dien_thoai: dossier.phone || "",
     ten_ho_kd: dossier.business_name || dossier.name || "",
     dia_chi_tru_so: dossier.address_detail || "",
-    nganh_1_ten: nganh[0].ten,
-    nganh_1_ma: nganh[0].ma,
-    nganh_2_ten: nganh[1].ten,
-    nganh_2_ma: nganh[1].ma,
-    nganh_3_ten: nganh[2].ten,
-    nganh_3_ma: nganh[2].ma,
+    nganh,
     von: formatNumber(dossier.capital),
     von_bang_chu: dossier.capital_words || "",
     lien_lac_so_nha: dossier.contact_address || "",
@@ -92,7 +89,7 @@ export async function GET(request, { params }) {
     ben_b_dien_thoai: emp.phone || "",
   };
 
-  const templatePath = path.join(process.cwd(), "templates", "mau-don-hkd-v2.docx");
+  const templatePath = path.join(process.cwd(), "templates", "mau-don-hkd-v3.docx");
   const content = fs.readFileSync(templatePath, "binary");
   const zip = new PizZip(content);
   const doc = new Docxtemplater(zip, { paragraphLoop: true, linebreaks: true });
