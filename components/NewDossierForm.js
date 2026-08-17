@@ -5,10 +5,10 @@ import { createClient } from "@/lib/supabaseClient";
 
 const PROCEDURES = ["Thành lập HKD", "Thay đổi HKD", "Chấm dứt HKD"];
 
-export default function NewDossierForm({ wards }) {
+export default function NewDossierForm({ wards, employees = [], isManager = false, defaultEmployeeId }) {
   const router = useRouter();
   const supabase = createClient();
-  const [form, setForm] = useState({ name: "", procedure: PROCEDURES[0], ward_id: wards[0]?.id || "", speed: "normal" });
+  const [form, setForm] = useState({ name: "", procedure: PROCEDURES[0], ward_id: wards[0]?.id || "", speed: "normal", assigned_employee_id: defaultEmployeeId || "" });
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -35,7 +35,7 @@ export default function NewDossierForm({ wards }) {
       group: "Hộ kinh doanh",
       procedure: form.procedure,
       ward_id: form.ward_id || null,
-      assigned_employee_id: employee.id,
+      assigned_employee_id: form.assigned_employee_id || employee.id,
       status: "pending",
       speed: form.speed,
       due_at,
@@ -75,6 +75,14 @@ export default function NewDossierForm({ wards }) {
           {wards.map((w) => <option key={w.id} value={w.id}>{w.name}</option>)}
         </select>
       </Field>
+
+      {isManager && employees.length > 0 && (
+        <Field label="Giao cho nhân viên">
+          <select value={form.assigned_employee_id} onChange={(e) => set("assigned_employee_id", e.target.value)} style={inputStyle}>
+            {employees.map((e) => <option key={e.id} value={e.id}>{e.name}{e.id === defaultEmployeeId ? " (tôi)" : ""}</option>)}
+          </select>
+        </Field>
+      )}
 
       <Field label="Loại hồ sơ">
         <select value={form.speed} onChange={(e) => set("speed", e.target.value)} style={inputStyle}>
