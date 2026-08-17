@@ -10,18 +10,6 @@ const ISSUING_OFFICES = ["Phòng Kinh tế, Hạ tầng và Đô thị", "Phòng
 const GENDERS = ["Nam", "Nữ", "Khác"];
 const ADDRESS_TYPE_RE = /phố|đường|ngõ|ngách|thôn|xóm|tổ dân phố/i;
 
-const INDUSTRY_CODES = [
-  { code: "4711", name: "Bán lẻ lương thực, thực phẩm trong cửa hàng chuyên doanh" },
-  { code: "5610", name: "Nhà hàng và các dịch vụ ăn uống phục vụ lưu động" },
-  { code: "6201", name: "Lập trình máy vi tính" },
-  { code: "4791", name: "Bán lẻ theo yêu cầu đặt hàng qua bưu điện hoặc internet" },
-  { code: "9313", name: "Hoạt động của các cơ sở thể thao" },
-  { code: "9602", name: "Cắt tóc, làm đầu, gội đầu" },
-  { code: "4321", name: "Lắp đặt hệ thống điện" },
-  { code: "6820", name: "Tư vấn, môi giới, đấu giá bất động sản" },
-  { code: "1410", name: "May trang phục (trừ trang phục từ da lông thú)" },
-];
-
 const SEVERITY_META = {
   block: { icon: "🔴", label: "Lỗi bắt buộc xử lý", color: "#E14434", bg: "#FCE7E4" },
   warning: { icon: "🟠", label: "Lưu ý nghiệp vụ", color: "#C98A2B", bg: "#FBF1E1" },
@@ -121,6 +109,7 @@ export default function NewDossierPage() {
   const [form, setForm] = useState(emptyForm);
   const [industries, setIndustries] = useState([]);
   const [industryQuery, setIndustryQuery] = useState("");
+  const [industryMatches, setIndustryMatches] = useState([]);
   const [manualName, setManualName] = useState("");
   const [manualCode, setManualCode] = useState("");
 
@@ -147,17 +136,15 @@ export default function NewDossierPage() {
 
       const { data: wardList } = await supabase.from("wards").select("id, name").order("name");
 
-      let employeeList = [];
       const { data: allActive } = await supabase
         .from("employees")
         .select("id, name, role")
         .eq("status", "Đang hoạt động")
         .order("name");
-      employeeList = allActive || [];
 
       setMe(meRow || null);
       setWards(wardList || []);
-      setEmployees(employeeList);
+      setEmployees(allActive || []);
       setForm((f) => ({ ...f, authorizedEmployeeId: meRow?.id || "" }));
       setLoading(false);
     })();
@@ -188,16 +175,28 @@ export default function NewDossierPage() {
     })();
   }, [form.ward_id, form.procedure, supabase]);
 
+  // Tìm ngành nghề từ bảng industry_codes thật (495 mã cấp 4, VSIC 2025)
+  useEffect(() => {
+    const q = industryQuery.trim();
+    if (!q) {
+      setIndustryMatches([]);
+      return;
+    }
+    const handle = setTimeout(async () => {
+      let query = supabase.from("industry_codes").select("code, name").limit(20);
+      if (/^\d+$/.test(q)) {
+        query = query.ilike("code", `${q}%`);
+      } else {
+        query = query.ilike("name", `%${q}%`);
+      }
+      const { data } = await query;
+      setIndustryMatches(data || []);
+    }, 250);
+    return () => clearTimeout(handle);
+  }, [industryQuery, supabase]);
+
   const whBlocking = warehouse.filter((w) => w.severity === "block");
   const needsAck = warehouse.length > 0 && !ackRead;
-
-  const industryMatches = industryQuery
-    ? INDUSTRY_CODES.filter(
-        (i) =>
-          i.name.toLowerCase().includes(industryQuery.toLowerCase()) ||
-          i.code.includes(industryQuery)
-      )
-    : [];
 
   function update(key, value) {
     setForm((f) => ({ ...f, [key]: value }));
@@ -453,13 +452,13 @@ export default function NewDossierPage() {
         </div>
 
         <div style={cardStyle}>
-          <SectionHeader n="05" title="Ngành, nghề kinh doanh" subtitle="Tìm theo mã hoặc tên — có thể thêm nhiều ngành." />
+          <SectionHeader n="05" title="Ngành, nghề kinh doanh" subtitle="Tìm theo mã hoặc tên trong danh mục 495 ngành cấp 4 (VSIC 2025) — có thể thêm nhiều ngành." />
           <Field label="Tìm ngành nghề" error={fieldErrors.industries}>
             <input style={inputStyle} placeholder="Nhập mã (vd: 4711) hoặc tên (vd: may mặc)..." value={industryQuery} onChange={(e) => setIndustryQuery(e.target.value)} />
             {industryMatches.length > 0 && (
-              <div style={{ border: "1px solid #E9EDE8", borderRadius: 9, marginTop: 4, overflow: "hidden" }}>
+              <div style={{ border: "1px solid #E9EDE8", borderRadius: 9, marginTop: 4, overflow: "hidden", maxHeight: 260, overflowY: "auto" }}>
                 {industryMatches.map((i) => (
-                  <div key={i.code} onClick={() => { addIndustry(i); setIndustryQuery(""); }}
+                  <div key={i.code} onClick={() => { addIndustry(i); setIndustryQuery(""); setIndustryMatches([]); }}
                     style={{ padding: "8px 12px", fontSize: 13, cursor: "pointer", borderBottom: "1px solid #E9EDE8", display: "flex", gap: 8 }}>
                     <span style={{ fontFamily: "monospace", color: "#A9201F", fontWeight: 700 }}>{i.code}</span>
                     <span style={{ color: "#1F2421" }}>{i.name}</span>
