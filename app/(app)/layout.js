@@ -22,9 +22,27 @@ export default async function AppLayout({ children }) {
     );
   }
 
+  const notifications = [];
+  if (employee.role === "Quản lý") {
+    const { data: submitted } = await supabase
+      .from("dossiers")
+      .select("id, code, name, employees:assigned_employee_id(name)")
+      .eq("status", "submitted");
+    (submitted || []).forEach((d) => notifications.push({ id: d.id, code: d.code, name: d.name, message: `${d.employees?.name || "Nhân viên"} trình duyệt` }));
+  }
+  const { data: mine } = await supabase
+    .from("dossiers")
+    .select("id, code, name, status, due_at")
+    .eq("assigned_employee_id", employee.id)
+    .neq("status", "sent");
+  (mine || []).forEach((d) => {
+    if (d.status === "supplement") notifications.push({ id: d.id, code: d.code, name: d.name, message: "Cần bổ sung hồ sơ" });
+    else if (d.due_at && new Date(d.due_at) < new Date()) notifications.push({ id: d.id, code: d.code, name: d.name, message: "Đã quá hạn xử lý" });
+  });
+
   return (
     <div style={{ display: "flex" }}>
-      <Sidebar employee={employee} />
+      <Sidebar employee={employee} notifications={notifications} />
       <div style={{ flex: 1, padding: 28 }}>{children}</div>
     </div>
   );
