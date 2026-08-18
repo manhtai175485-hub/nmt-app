@@ -5,6 +5,43 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabaseClient";
 
+const PROVINCES = [
+  "Thành phố Hà Nội",
+  "Thành phố Huế",
+  "Tỉnh Quảng Ninh",
+  "Tỉnh Cao Bằng",
+  "Tỉnh Lạng Sơn",
+  "Tỉnh Lai Châu",
+  "Tỉnh Điện Biên",
+  "Tỉnh Sơn La",
+  "Tỉnh Thanh Hóa",
+  "Tỉnh Nghệ An",
+  "Tỉnh Hà Tĩnh",
+  "Tỉnh Tuyên Quang",
+  "Tỉnh Lào Cai",
+  "Tỉnh Thái Nguyên",
+  "Tỉnh Phú Thọ",
+  "Tỉnh Bắc Ninh",
+  "Tỉnh Hưng Yên",
+  "Thành phố Hải Phòng",
+  "Tỉnh Ninh Bình",
+  "Tỉnh Quảng Trị",
+  "Thành phố Đà Nẵng",
+  "Tỉnh Quảng Ngãi",
+  "Tỉnh Gia Lai",
+  "Tỉnh Khánh Hòa",
+  "Tỉnh Lâm Đồng",
+  "Tỉnh Đắk Lắk",
+  "Thành phố Hồ Chí Minh",
+  "Tỉnh Đồng Nai",
+  "Tỉnh Tây Ninh",
+  "Thành phố Cần Thơ",
+  "Tỉnh Vĩnh Long",
+  "Tỉnh Đồng Tháp",
+  "Tỉnh Cà Mau",
+  "Tỉnh An Giang",
+];
+
 const PROCEDURES = ["Thành lập HKD", "Thay đổi HKD", "Chấm dứt HKD"];
 const ISSUING_OFFICES = ["Phòng Kinh tế, Hạ tầng và Đô thị", "Phòng Kinh tế"];
 const GENDERS = ["Nam", "Nữ", "Khác"];
@@ -134,7 +171,7 @@ const emptyForm = {
   email: "",
   businessName: "",
   addressDetail: "",
-  province: "",
+  province: PROVINCES[0],
   contactAddress: "",
   capital: "",
   capitalWords: "",
@@ -157,6 +194,7 @@ export default function NewDossierPage() {
   const [form, setForm] = useState(emptyForm);
   const [industries, setIndustries] = useState([]);
   const [industryQuery, setIndustryQuery] = useState("");
+  const [wardQuery, setWardQuery] = useState("");
   const [industryMatches, setIndustryMatches] = useState([]);
 
   const [warehouse, setWarehouse] = useState([]);
@@ -196,10 +234,26 @@ export default function NewDossierPage() {
     })();
   }, [router, supabase]);
 
+  // Gợi ý tên hộ kinh doanh = họ tên chủ hộ + năm sinh, chỉ điền khi ô còn trống (không ghi đè nếu đã tự sửa)
+  useEffect(() => {
+    setForm((f) => {
+      if (f.businessName) return f;
+      const year = f.dob ? new Date(f.dob).getFullYear() : "";
+      const suggestion = [f.ownerName.trim(), year].filter(Boolean).join(" ");
+      return suggestion ? { ...f, businessName: suggestion } : f;
+    });
+  }, [form.ownerName, form.dob]);
+
   const wardName = useMemo(
     () => wards.find((w) => w.id === form.ward_id)?.name || "",
     [wards, form.ward_id]
   );
+
+  const wardMatches = useMemo(() => {
+    const q = wardQuery.trim().toLowerCase();
+    if (!q) return [];
+    return wards.filter((w) => w.name.toLowerCase().includes(q)).slice(0, 20);
+  }, [wardQuery, wards]);
 
   useEffect(() => {
     if (!form.ward_id) {
@@ -415,10 +469,39 @@ export default function NewDossierPage() {
             </select>
           </Field>
           <Field label="Phường / xã" error={fieldErrors.ward_id}>
-            <select style={inputStyle} value={form.ward_id} onChange={(e) => update("ward_id", e.target.value)}>
-              <option value="">— Chọn phường/xã —</option>
-              {wards.map((w) => <option key={w.id} value={w.id}>{w.name}</option>)}
-            </select>
+            {form.ward_id ? (
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", border: "1px solid #ddd", borderRadius: 8, padding: "8px 10px", fontSize: 14 }}>
+                <span>{wardName}</span>
+                <span
+                  onClick={() => { update("ward_id", ""); setWardQuery(""); }}
+                  style={{ color: "#5B6660", cursor: "pointer", fontSize: 13 }}
+                >
+                  Đổi
+                </span>
+              </div>
+            ) : (
+              <>
+                <input
+                  style={inputStyle}
+                  placeholder="Gõ chữ cái đầu để tìm phường/xã..."
+                  value={wardQuery}
+                  onChange={(e) => setWardQuery(e.target.value)}
+                />
+                {wardMatches.length > 0 && (
+                  <div style={{ border: "1px solid #E9EDE8", borderRadius: 9, marginTop: 4, overflow: "hidden", maxHeight: 220, overflowY: "auto" }}>
+                    {wardMatches.map((w) => (
+                      <div
+                        key={w.id}
+                        onClick={() => { update("ward_id", w.id); setWardQuery(""); }}
+                        style={{ padding: "8px 12px", fontSize: 13, cursor: "pointer", borderBottom: "1px solid #E9EDE8", color: "#1F2421" }}
+                      >
+                        {w.name}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </>
+            )}
           </Field>
 
           {form.ward_id && (
@@ -486,7 +569,7 @@ export default function NewDossierPage() {
               <input style={inputStyle} placeholder="ten@email.com" value={form.email} onChange={(e) => update("email", e.target.value)} />
             </Field>
           </div>
-          <Field label="Tên hộ kinh doanh">
+          <Field label="Tên hộ kinh doanh" hint="Tự động gợi ý theo họ tên + năm sinh chủ hộ, có thể sửa lại">
             <input style={inputStyle} placeholder="Ví dụ: NGUYỄN VĂN A 1990" value={form.businessName} onChange={(e) => update("businessName", e.target.value)} />
           </Field>
         </div>
@@ -498,7 +581,9 @@ export default function NewDossierPage() {
               <input style={inputStyle} placeholder="Số nhà, ngõ, đường, tổ/thôn..." value={form.addressDetail} onChange={(e) => update("addressDetail", e.target.value)} />
             </Field>
             <Field label="Tỉnh / Thành phố">
-              <input style={inputStyle} value={form.province} onChange={(e) => update("province", e.target.value)} />
+              <select style={inputStyle} value={form.province} onChange={(e) => update("province", e.target.value)}>
+                {PROVINCES.map((p) => <option key={p} value={p}>{p}</option>)}
+              </select>
             </Field>
           </div>
           <Field label="Địa chỉ liên lạc">
