@@ -33,6 +33,54 @@ const cardStyle = {
   background: "#fff",
 };
 
+const CAPITAL_PRESETS = [30000000, 50000000, 100000000, 200000000];
+
+const DIGIT_WORDS = ["không", "một", "hai", "ba", "bốn", "năm", "sáu", "bảy", "tám", "chín"];
+
+function threeDigitToWords(n, isFirstGroup) {
+  const tram = Math.floor(n / 100);
+  const chuc = Math.floor((n % 100) / 10);
+  const donvi = n % 10;
+  let parts = [];
+
+  if (tram > 0 || !isFirstGroup) {
+    parts.push(DIGIT_WORDS[tram] + " trăm");
+  }
+  if (chuc === 0) {
+    if (donvi > 0 && (tram > 0 || !isFirstGroup)) parts.push("lẻ");
+  } else if (chuc === 1) {
+    parts.push("mười");
+  } else {
+    parts.push(DIGIT_WORDS[chuc] + " mươi");
+  }
+  if (donvi > 0) {
+    if (donvi === 1 && chuc >= 2) parts.push("mốt");
+    else if (donvi === 5 && chuc >= 1) parts.push("lăm");
+    else parts.push(DIGIT_WORDS[donvi]);
+  }
+  return parts.join(" ");
+}
+
+function numberToVietnameseWords(num) {
+  const n = Math.floor(Number(num) || 0);
+  if (n === 0) return "";
+  const units = ["", " nghìn", " triệu", " tỷ"];
+  let groups = [];
+  let rem = n;
+  while (rem > 0) {
+    groups.push(rem % 1000);
+    rem = Math.floor(rem / 1000);
+  }
+  let words = [];
+  for (let i = groups.length - 1; i >= 0; i--) {
+    if (groups[i] === 0) continue;
+    const isFirstGroup = i === groups.length - 1;
+    words.push(threeDigitToWords(groups[i], isFirstGroup) + units[i]);
+  }
+  const result = words.join(" ").replace(/\s+/g, " ").trim();
+  return result.charAt(0).toUpperCase() + result.slice(1);
+}
+
 function suggestCode() {
   const now = new Date();
   const yy = String(now.getFullYear()).slice(2);
@@ -110,8 +158,6 @@ export default function NewDossierPage() {
   const [industries, setIndustries] = useState([]);
   const [industryQuery, setIndustryQuery] = useState("");
   const [industryMatches, setIndustryMatches] = useState([]);
-  const [manualName, setManualName] = useState("");
-  const [manualCode, setManualCode] = useState("");
 
   const [warehouse, setWarehouse] = useState([]);
   const [ackRead, setAckRead] = useState(false);
@@ -200,6 +246,10 @@ export default function NewDossierPage() {
 
   function update(key, value) {
     setForm((f) => ({ ...f, [key]: value }));
+  }
+
+  function updateCapital(value) {
+    setForm((f) => ({ ...f, capital: value, capitalWords: numberToVietnameseWords(value) }));
   }
 
   function addIndustry(item) {
@@ -472,22 +522,6 @@ export default function NewDossierPage() {
             )}
           </Field>
 
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 110px auto", gap: 8, alignItems: "end", margin: "12px 0" }}>
-            <Field label="Chưa có trong danh mục? Thêm thủ công">
-              <input style={inputStyle} placeholder="Tên ngành nghề..." value={manualName} onChange={(e) => setManualName(e.target.value)} />
-            </Field>
-            <Field label="Mã ngành">
-              <input style={inputStyle} placeholder="4773" value={manualCode} onChange={(e) => setManualCode(e.target.value.replace(/\D/g, "").slice(0, 4))} />
-            </Field>
-            <button
-              type="button"
-              onClick={() => { addIndustry({ code: manualCode, name: manualName }); setManualName(""); setManualCode(""); }}
-              style={{ border: "1px solid #A9201F", color: "#A9201F", background: "#fff", borderRadius: 8, padding: "8px 14px", fontSize: 13, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap" }}
-            >
-              + Thêm ngành nghề
-            </button>
-          </div>
-
           <div style={{ border: "1px solid #E9EDE8", borderRadius: 9, padding: 12 }}>
             <div style={{ fontSize: 12, fontWeight: 600, color: "#5B6660", marginBottom: 8 }}>DANH SÁCH NGÀNH NGHỀ ({industries.length})</div>
             {industries.length === 0 ? (
@@ -518,9 +552,25 @@ export default function NewDossierPage() {
 
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginTop: 12 }}>
             <Field label="Vốn kinh doanh">
-              <input style={inputStyle} placeholder="100.000.000" value={form.capital} onChange={(e) => update("capital", e.target.value.replace(/[^\d]/g, ""))} />
+              <input style={inputStyle} placeholder="100.000.000" value={form.capital} onChange={(e) => updateCapital(e.target.value.replace(/[^\d]/g, ""))} />
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 6 }}>
+                {CAPITAL_PRESETS.map((v) => (
+                  <div
+                    key={v}
+                    onClick={() => updateCapital(String(v))}
+                    style={{
+                      fontSize: 12, padding: "4px 10px", borderRadius: 999, cursor: "pointer",
+                      border: `1px solid ${String(v) === form.capital ? "#A9201F" : "#E9EDE8"}`,
+                      color: String(v) === form.capital ? "#A9201F" : "#5B6660",
+                      background: String(v) === form.capital ? "#F7E7E4" : "#fff",
+                    }}
+                  >
+                    {v.toLocaleString("vi-VN")}
+                  </div>
+                ))}
+              </div>
             </Field>
-            <Field label="Tổng số (bằng chữ)">
+            <Field label="Tổng số (bằng chữ)" hint="Tự động điền, có thể sửa lại">
               <input style={inputStyle} placeholder="Một trăm triệu" value={form.capitalWords} onChange={(e) => update("capitalWords", e.target.value)} />
             </Field>
           </div>
