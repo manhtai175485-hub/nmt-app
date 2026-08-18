@@ -249,7 +249,8 @@ export default function NewDossierPage() {
   }
 
   function updateCapital(value) {
-    setForm((f) => ({ ...f, capital: value, capitalWords: numberToVietnameseWords(value) }));
+    const words = numberToVietnameseWords(value);
+    setForm((f) => ({ ...f, capital: value, capitalWords: words ? `${words} Việt Nam đồng` : "" }));
   }
 
   function addIndustry(item) {
