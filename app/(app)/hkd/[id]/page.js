@@ -2,7 +2,7 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabaseServer";
 import { STATUS, fmtDate } from "@/lib/constants";
-import StatusActions from "@/components/StatusActions";
+
 import FileUploadField from "@/components/FileUploadField";
 import ReassignEmployee from "@/components/ReassignEmployee";
 
@@ -90,12 +90,9 @@ export default async function DossierDetailPage({ params }) {
         <FileUploadField dossierId={dossier.id} kind="license" label="Giấy chứng nhận (GCN)" currentPath={dossier.license_file_path} />
       </div>
 
-      <StatusActions
-        dossierId={dossier.id}
-        currentStatus={dossier.status}
-        appointmentUploaded={dossier.appointment_uploaded}
-        licenseUploaded={dossier.license_uploaded}
-      />
+              <Link href="/hkd" style={{ fontSize: 13, color: "#A9201F", textDecoration: "none", fontWeight: 600 }}>
+          ← Xử lý trạng thái tại trang Trạng thái
+        </Link>
 
       {history && history.length > 0 && (
         <div style={{ background: "#fff", border: "1px solid #E2E5DF", borderRadius: 12, padding: 20, marginTop: 16 }}>
