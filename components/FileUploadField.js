@@ -3,12 +3,23 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabaseClient";
 
+function sanitizeFileName(name) {
+  const parts = name.split(".");
+  const ext = parts.length > 1 ? "." + parts.pop() : "";
+  const base = parts.join(".")
+    .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+    .replace(/đ/gi, "d")
+    .replace(/[^a-zA-Z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .toLowerCase();
+  return (base || "file") + ext.toLowerCase();
+}
+
 export default function FileUploadField({ dossierId, kind, label, currentPath }) {
   const router = useRouter();
   const supabase = createClient();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-
   const uploadedFlagCol = kind === "appointment" ? "appointment_uploaded" : "license_uploaded";
   const pathCol = kind === "appointment" ? "appointment_file_path" : "license_file_path";
 
@@ -17,20 +28,17 @@ export default function FileUploadField({ dossierId, kind, label, currentPath })
     if (!file) return;
     setLoading(true);
     setError("");
-
-    const path = `${dossierId}/${kind}-${Date.now()}-${file.name}`;
+    const path = `${dossierId}/${kind}-${Date.now()}-${sanitizeFileName(file.name)}`;
     const { error: uploadError } = await supabase.storage.from("dossier-files").upload(path, file);
     if (uploadError) {
       setError("Không tải lên được: " + uploadError.message);
       setLoading(false);
       return;
     }
-
     const { error: updateError } = await supabase.from("dossiers").update({
       [uploadedFlagCol]: true,
       [pathCol]: path,
     }).eq("id", dossierId);
-
     setLoading(false);
     if (updateError) { setError("Lỗi lưu: " + updateError.message); return; }
     router.refresh();
