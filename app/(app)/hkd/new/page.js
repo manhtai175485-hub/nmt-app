@@ -234,7 +234,6 @@ export default function NewDossierPage() {
     })();
   }, [router, supabase]);
 
-  // Gợi ý tên hộ kinh doanh = họ tên chủ hộ + năm sinh, chỉ điền khi ô còn trống (không ghi đè nếu đã tự sửa)
   useEffect(() => {
     setForm((f) => {
       if (f.businessName) return f;
@@ -275,7 +274,6 @@ export default function NewDossierPage() {
     })();
   }, [form.ward_id, form.procedure, supabase]);
 
-  // Tìm ngành nghề từ bảng industry_codes thật (495 mã cấp 4, VSIC 2025)
   useEffect(() => {
     const q = industryQuery.trim();
     if (!q) {
