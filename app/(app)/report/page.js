@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabaseServer";
 import { currentMonthKey, monthOptions, isInMonth } from "@/lib/month";
 import MonthSelect from "@/components/MonthSelect";
+import { isOverdue } from "@/lib/deadline";
 
 export default async function ReportPage({ searchParams }) {
   const supabase = createClient();
@@ -29,9 +30,9 @@ export default async function ReportPage({ searchParams }) {
       const paidThisMonth = list.filter((d) => d.status === "sent" && d.payment_status === "Đã thu" && isInMonth(d.paid_at, month));
       const wage = paidThisMonth.reduce((s, d) => s + (wageRates[d.group] || 0), 0);
 
-      const overdue = list.filter((d) => d.status !== "sent" && d.due_at && new Date(d.due_at) < new Date()).length;
-      const onTimeRate = list.length ? Math.round(((list.length - overdue) / list.length) * 100) : 100;
-      const suggestedBonus = onTimeRate >= 90 ? 1000000 : 0;
+      const overdue = list.filter((d) => isOverdue(d)).length;
+      const onTimeRate = list.length ? Math.round(((list.length - overdue) / list.length) * 100) : null;
+      const suggestedBonus = onTimeRate !== null && onTimeRate >= 90 ? 1000000 : 0;
 
       const { data: adjustments } = await supabase
         .from("employee_adjustments")
@@ -86,7 +87,9 @@ export default async function ReportPage({ searchParams }) {
                 <td style={{ ...td, fontWeight: 600 }}>{r.employee.name}</td>
                 <td style={td}>{r.completed}</td>
                 <td style={td}>
-                  <span style={{ color: r.onTimeRate >= 90 ? "#1E8E5A" : "#8A6D00", fontWeight: 600 }}>{r.onTimeRate}%</span>
+                  <span style={{ color: r.onTimeRate === null ? "#6B7269" : r.onTimeRate >= 90 ? "#1E8E5A" : "#8A6D00", fontWeight: 600 }}>
+                    {r.onTimeRate === null ? "—" : `${r.onTimeRate}%`}
+                  </span>
                   {r.suggestedBonus > 0 && r.bonus === 0 && (
                     <div style={{ fontSize: 11, color: "#6B7269" }}>Đề xuất thưởng 1.000.000đ</div>
                   )}
