@@ -57,7 +57,7 @@ function deadlineInfo(dossier) {
   };
   return { label: DEADLINE_LABELS[key], ...styles[key] };
 }
-}
+
 
 function Timeline({ status }) {
   const idx = FLOW.findIndex((f) => f.key === status);
