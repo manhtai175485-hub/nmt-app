@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabaseClient";
 import StatusActions from "@/components/StatusActions";
 import FileUploadField from "@/components/FileUploadField";
 
+import { getDeadlineStatus, DEADLINE_LABELS } from "@/lib/deadline";
 const C = {
   brand: "#A9201F",
   brandSoft: "#F7E7E4",
@@ -47,13 +48,15 @@ function fmtDate(dateStr) {
 }
 
 function deadlineInfo(dossier) {
-  if (!dossier.due_at || dossier.status === "sent") return null;
-  const due = new Date(dossier.due_at).getTime();
-  const now = Date.now();
-  const hoursLeft = (due - now) / 3600000;
-  if (hoursLeft < 0) return { label: "Quá hạn", color: C.overdue, bg: C.overdueSoft };
-  if (hoursLeft < 24) return { label: "Sắp hết hạn", color: C.supplement, bg: C.supplementSoft };
-  return { label: "Còn hạn", color: C.ok, bg: C.okSoft };
+  const key = getDeadlineStatus(dossier);
+  if (!key) return null;
+  const styles = {
+    overdue: { color: C.overdue, bg: C.overdueSoft },
+    soon: { color: C.supplement, bg: C.supplementSoft },
+    ontime: { color: C.ok, bg: C.okSoft },
+  };
+  return { label: DEADLINE_LABELS[key], ...styles[key] };
+}
 }
 
 function Timeline({ status }) {
