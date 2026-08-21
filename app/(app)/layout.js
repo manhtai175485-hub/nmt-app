@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabaseServer";
 import Sidebar from "@/components/Sidebar";
+import { isOverdue } from "@/lib/deadline";
 
 export default async function AppLayout({ children }) {
   const supabase = createClient();
@@ -37,7 +38,7 @@ export default async function AppLayout({ children }) {
     .neq("status", "sent");
   (mine || []).forEach((d) => {
     if (d.status === "supplement") notifications.push({ id: d.id, code: d.code, name: d.name, message: "Cần bổ sung hồ sơ" });
-    else if (d.due_at && new Date(d.due_at) < new Date()) notifications.push({ id: d.id, code: d.code, name: d.name, message: "Đã quá hạn xử lý" });
+    else if (isOverdue(d)) notifications.push({ id: d.id, code: d.code, name: d.name, message: "Đã quá hạn xử lý" });
   });
 
   return (
